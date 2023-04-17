@@ -4,7 +4,6 @@ import numpy as np
 import sqlite3
 import pickle
 import re
-import os
 
 
 import LibBlet
@@ -14,17 +13,17 @@ import DataBase
 bot = config.bot
 
 
-state = ''
-#
-
-def set_state(value: str):
-    global state
-    state = value
+states = {}
 
 
-def get_state():
-    global state
-    return state
+def set_state(key: int, value: str):
+    global states
+    states[key] = value
+
+
+def get_state(key: int):
+    global states
+    return states.get(key)
 
 
 hideBoard = types.ReplyKeyboardRemove()
@@ -59,8 +58,7 @@ def alert(message):
 
 @bot.message_handler(commands=['start'])
 def hi(message):
-    global state
-    state = 'main'
+    set_state(message.chat.id, 'main')
     try:
         DataBase.add_user(message.from_user.id, message.from_user.username)
     except sqlite3.IntegrityError:
@@ -79,7 +77,8 @@ def hi(message):
 
 @bot.message_handler(content_types=['text'])
 def answer(message):
-    print(f'{message.from_user.username} {message.chat.id}:    {message.text}')
+    print(f'{message.from_user.username} {message.chat.id}:    text: {message.text}     '
+          f'state:{get_state(message.chat.id)}')
 
     # try:
     #     if get_state() != 'main' or message.text == 'На главную':
@@ -87,8 +86,13 @@ def answer(message):
     # except:
     #     pass
 
-    if get_state() == '':
-        bot.send_message(message.chat.id, 'Бот был перезагружен)')
+    if get_state(message.chat.id) is None:
+        users_list = np.array(DataBase.get_user_list())
+        try:
+            index = np.where(users_list == str(message.chat.id))[0][0]
+            bot.send_message(message.chat.id, 'Бот был перезагружен)')
+        except:
+            bot.send_message(message.chat.id, 'Привет)')
         hi(message)
         return
 
@@ -96,7 +100,7 @@ def answer(message):
         hi(message)
 
     elif message.text == 'Назад':
-        match get_state():
+        match get_state(message.chat.id):
             case 'Result':
                 full_answer(message)
             case 'my_exams':
@@ -115,6 +119,8 @@ def answer(message):
                 cards_list(message)
             case 'examination':
                 exam_menu(message)
+            case 'edit_exam_name':
+                my_exams_menu(message)
             case _:
                 pass
 
@@ -122,7 +128,7 @@ def answer(message):
 @bot.callback_query_handler(func=lambda call: True)
 def buttons(call):
 
-    global state
+    state = get_state(call.message.chat.id)
     global Exam
     global Card
     global progress
@@ -132,15 +138,20 @@ def buttons(call):
 
     print(f'{call.message.from_user.username} {call.message.chat.id}:    button: {call.data}   state: {state}')
 
-    if state == '':
+    if state is None:
         remove_inline_keyboard(message)
-        bot.send_message(message.chat.id, 'Бот был перезагружен)')
+        users_list = np.array(DataBase.get_user_list())
+        try:
+            index = np.where(users_list == str(message.chat.id))[0][0]
+            bot.send_message(message.chat.id, 'Бот был перезагружен)')
+        except:
+            bot.send_message(message.chat.id, 'Привет)')
         hi(message)
         return
 
     match call.data:
         case 'my_exam':
-            state = 'my_exams'
+            set_state(message.chat.id, 'my_exams')
             remove_inline_keyboard(call.message)
             my_exams_menu(call.message)
 
@@ -192,7 +203,7 @@ def buttons(call):
                 remove_inline_keyboard(message)
                 return
 
-            set_state('edit_card')
+            set_state(message.chat.id, 'edit_card')
             remove_inline_keyboard(message)
 
             reply_markup = types.InlineKeyboardMarkup(row_width=1)
@@ -211,7 +222,7 @@ def buttons(call):
             remove_inline_keyboard(message)
 
             bot.send_message(text='Введите вопрос', chat_id=message.chat.id)
-            set_state('edit_question_name')
+            set_state(message.chat.id, 'edit_question_name')
             bot.register_next_step_handler(message, set_value_in_edite_mode)
 
         case 'edit_card_short_answer':
@@ -222,7 +233,7 @@ def buttons(call):
             remove_inline_keyboard(message)
 
             bot.send_message(text='Введите тезисный (краткий) ответ', chat_id=message.chat.id)
-            set_state('edit_short_answer')
+            set_state(message.chat.id, 'edit_short_answer')
             bot.register_next_step_handler(message, set_value_in_edite_mode)
 
         case 'edit_card_name':
@@ -233,7 +244,7 @@ def buttons(call):
             remove_inline_keyboard(message)
 
             bot.send_message(text='Введите развернутый ответ', chat_id=message.chat.id)
-            set_state('edit_full_answer')
+            set_state(message.chat.id, 'edit_full_answer')
             bot.register_next_step_handler(message, set_value_in_edite_mode)
 
         case 'card_delete':
@@ -255,7 +266,7 @@ def buttons(call):
 
         case 'ok':
             remove_inline_keyboard(message)
-            if get_state() == 'examination':
+            if state == 'examination':
                 bot.send_message(message.chat.id, 'Правильно!')
                 bot.send_message(message.chat.id, 'Развернутый ответ билета:\n' +
                                  Card.full_answer, parse_mode='HTML')
@@ -265,13 +276,12 @@ def buttons(call):
 
         case 'not_ok':
             remove_inline_keyboard(message)
-            if get_state() == 'examination':
+            if state == 'examination':
                 bot.send_message(message.chat.id, 'Неверно(((')
                 bot.send_message(message.chat.id, 'Правильный ответ:\n' +
                                  f'{Card.short_answer}\n\n{Card.full_answer}', parse_mode='HTML')
                 progress += 1
                 examination(message)
-
 
         case _:
 
@@ -297,7 +307,7 @@ def buttons(call):
 
 def my_exams_menu(message):
     bot.send_message(message.chat.id, 'Список экзаменов', reply_markup=re_markup)
-    set_state('my_exams')
+    set_state(message.chat.id, 'my_exams')
     data = np.array(DataBase.get_exam_list(message.chat.id))
     text = ''
 
@@ -325,7 +335,7 @@ global_edite_mode = False
 
 
 def where_add(message):
-    set_state('add_exam')
+    set_state(message.chat.id, 'add_exam')
     reply_markup = types.InlineKeyboardMarkup()
     from_file = types.InlineKeyboardButton('Из файла', callback_data='add_exam_from_file')
     create = types.InlineKeyboardButton('Создать', callback_data='create_exam')
@@ -364,7 +374,7 @@ def set_value(message):
 
     if message.text == 'Назад':
 
-        match get_state():
+        match get_state(message.chat.id):
             case 'set_exam_name':
                 where_add(message)
 
@@ -388,7 +398,7 @@ def set_value(message):
         hi(message)
         return
 
-    match get_state():
+    match get_state(message.chat.id):
         case 'set_exam_name':
             Exam = LibBlet.Exam(message.text)
 
@@ -428,25 +438,25 @@ def set_value(message):
 def set_exam_name(message):
     bot.send_message(text='Введите название экзамена', chat_id=message.chat.id, reply_markup=re_markup)
 
-    set_state('set_exam_name')
+    set_state(message.chat.id, 'set_exam_name')
     bot.register_next_step_handler(message, set_value)
 
 
 def question_name(message):
     bot.send_message(text='Введите вопрос', chat_id=message.chat.id)
-    set_state('set_question_name')
+    set_state(message.chat.id, 'set_question_name')
     bot.register_next_step_handler(message, set_value)
 
 
 def short_answer(message):
     bot.send_message(text='Введите тезисный (краткий) ответ', chat_id=message.chat.id)
-    set_state('set_short_answer')
+    set_state(message.chat.id, 'set_short_answer')
     bot.register_next_step_handler(message, set_value)
 
 
 def full_answer(message):
     bot.send_message(text='Введите развернутый ответ', chat_id=message.chat.id)
-    set_state('set_full_answer')
+    set_state(message.chat.id, 'set_full_answer')
     bot.register_next_step_handler(message, set_value)
 
 
@@ -483,12 +493,12 @@ def all_right(call):
         global first_question_flag
         first_question_flag = True
 
-        set_state('ended_add')
+        set_state(call.message.chat.id, 'ended_add')
 
 
 def write_card(message):
     bot.send_message(message.chat.id, 'ПроверОчка')
-    set_state('Result')
+    set_state(message.chat.id, 'Result')
     global Card
     card_text = f'<b>{Card.name}</b>\n{Card.short_answer}\n\n{Card.full_answer}'
 
@@ -498,7 +508,7 @@ def write_card(message):
 
 # region switch exam
 def exam_menu(message):
-    set_state('exam')
+    set_state(message.chat.id, 'exam')
 
     global Exam
     markup = types.InlineKeyboardMarkup(row_width=1)
@@ -514,7 +524,7 @@ def exam_menu(message):
 
 
 def edit_exam_name(message):
-    set_state('edit_exam_name')
+    set_state(message.chat.id, 'edit_exam_name')
     bot.send_message(message.chat.id, 'Введите название экзамена')
     bot.register_next_step_handler(message, set_new_exam_name)
 
@@ -531,7 +541,7 @@ def set_new_exam_name(message):
 
 # region switch card
 def cards_list(message):
-    set_state('cards_list')
+    set_state(message.chat.id, 'cards_list')
     global Exam
 
     if message.text == 'Назад':
@@ -564,7 +574,7 @@ def cards_list(message):
 
 
 def card_menu(message):
-    set_state('card_menu')
+    set_state(message.chat.id, 'card_menu')
 
     if message.text == 'Назад':
         cards_list(message)
@@ -613,7 +623,7 @@ def set_value_in_edite_mode(message):
         hi(message)
         return
 
-    match get_state():
+    match get_state(message.chat.id):
         case 'edit_question_name':
             Card.name = message.text
 
@@ -662,7 +672,7 @@ def start_examination(message):
 
 
 def examination(message):
-    set_state('examination')
+    set_state(message.chat.id, 'examination')
     global examination_cards
     global progress
     global Card
