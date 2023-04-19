@@ -26,6 +26,26 @@ def get_state(key: int):
     return states.get(key)
 
 
+Exams = {}
+
+
+def get_exam(key: int):
+    global Exams
+    try:
+        return Exams[key]
+    except:
+        return None
+
+
+def set_exam(key: int, value: LibBlet.Exam):
+    global Exams
+    Exams[key] = value
+
+
+Card: LibBlet.Exam.ExaminationCard
+
+global_edite_mode = False
+
 hideBoard = types.ReplyKeyboardRemove()
 
 re_markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
@@ -36,7 +56,7 @@ re_markup.add(main_button, return_button)
 
 def remove_inline_keyboard(message):
     # Remove InlineButtons
-    bot.edit_message_text(text=message.text, chat_id=message.chat.id, message_id=message.message_id)
+    bot.edit_message_text(text=message.html_text, chat_id=message.chat.id, message_id=message.message_id, parse_mode='HTML')
 
 
 # region alert_command
@@ -129,7 +149,6 @@ def answer(message):
 def buttons(call):
 
     state = get_state(call.message.chat.id)
-    global Exam
     global Card
     global progress
     global score
@@ -163,7 +182,7 @@ def buttons(call):
             if state != 'add_exam':
                 remove_inline_keyboard(message)
                 return
-
+            remove_inline_keyboard(message)
             bot.send_message(message.chat.id, 'Пришлите мне файл')
             bot.register_next_step_handler(message, add_exam_from_file)
 
@@ -236,7 +255,7 @@ def buttons(call):
             set_state(message.chat.id, 'edit_short_answer')
             bot.register_next_step_handler(message, set_value_in_edite_mode)
 
-        case 'edit_card_name':
+        case 'edit_card_full_answer':
             if state != 'edit_card':
                 remove_inline_keyboard(message)
                 return
@@ -253,7 +272,7 @@ def buttons(call):
                 return
 
             remove_inline_keyboard(call.message)
-            Exam.delete_examination_card(Card)
+            get_exam(message.chat.id).delete_examination_card(Card)
             bot.send_message(call.message.chat.id, 'Удалено.')
             cards_list(call.message)
 
@@ -287,7 +306,7 @@ def buttons(call):
 
             if state == 'my_exams':
                 remove_inline_keyboard(call.message)
-                Exam = LibBlet.Exam.load_exam(call.data)
+                set_exam(message.chat.id, LibBlet.Exam.load_exam(call.data))
                 exam_menu(call.message)
             elif state == 'exam':
                 data = call.data.split('&&')
@@ -327,13 +346,7 @@ def my_exams_menu(message):
         bot.send_message(message.chat.id, 'Здесь пока ничего нет')
 
 
-Exam: LibBlet.Exam
-Card: LibBlet.Exam.ExaminationCard
 # region AddCard
-
-global_edite_mode = False
-
-
 def where_add(message):
     set_state(message.chat.id, 'add_exam')
     reply_markup = types.InlineKeyboardMarkup()
@@ -354,9 +367,12 @@ def add_exam_from_file(message):
         return
 
     file_info = bot.get_file(message.document.file_id)
-    global Exam
-    Exam = pickle.loads(bot.download_file(file_info.file_path))
-    save_exam(message)
+    try:
+        set_exam(message.chat.id, pickle.loads(bot.download_file(file_info.file_path)))
+        save_exam(message)
+    except:
+        bot.send_message(message.chat.id, 'Как-то это не похоже на файл, который я могу распознать((')
+        where_add(message)
 
 
 def set_global_edite_mode(param: bool):
@@ -368,7 +384,6 @@ first_question_flag = True
 
 
 def set_value(message):
-    global Exam
     global Card
     global first_question_flag
 
@@ -400,7 +415,7 @@ def set_value(message):
 
     match get_state(message.chat.id):
         case 'set_exam_name':
-            Exam = LibBlet.Exam(message.text)
+            set_exam(message.chat.id, LibBlet.Exam(message.text))
 
             question_name(message)
 
@@ -462,16 +477,17 @@ def full_answer(message):
 
 def save_exam(message):
     global Card
-    global Exam
-    file_second_name = re.sub(r'\W', r'_', str(Exam.name))
+    exam = get_exam(message.chat.id)
+    file_second_name = re.sub(r'\W', r'_', str(exam.name))
     try:
-        Exam.file_name = f'{message.chat.id}_{file_second_name}'
-        pickle.dump(Exam, open(f'Exams\\{message.chat.id}_{file_second_name}.dat', 'wb'),
+        exam.file_name = f'{message.chat.id}_{file_second_name}'
+        pickle.dump(exam, open(f'Exams\\{message.chat.id}_{file_second_name}.dat', 'wb'),
                     protocol=pickle.HIGHEST_PROTOCOL)
-        test = pickle.dumps(Exam)
+        test = pickle.dumps(exam)
         out = pickle.loads(test)
         if not global_edite_mode:
             DataBase.add_exam(message.chat.id, f'{message.chat.id}_{file_second_name}')
+        else:
             set_global_edite_mode(False)
         bot.send_message(text='Экзамен сохранен.', chat_id=message.chat.id)
     except Exception as inst:
@@ -481,13 +497,12 @@ def save_exam(message):
 
 def all_right(call):
     global Card
-    global Exam
 
     if call.data == 'yes':
         question_name(call.message)
-        Exam.add_examination_card(Card)
+        get_exam(call.message.chat.id).add_examination_card(Card)
     else:
-        Exam.add_examination_card(Card)
+        get_exam(call.message.chat.id).add_examination_card(Card)
         save_exam(call.message)
 
         global first_question_flag
@@ -510,17 +525,17 @@ def write_card(message):
 def exam_menu(message):
     set_state(message.chat.id, 'exam')
 
-    global Exam
+    exam = get_exam(message.chat.id)
     markup = types.InlineKeyboardMarkup(row_width=1)
     test = types.InlineKeyboardButton('Решать экзамен', callback_data='do_task')
     edit = types.InlineKeyboardButton('Изменить название', callback_data='edit_exam_name')
     card_list = types.InlineKeyboardButton('Список билетов', callback_data='cards_list')
-    delete = types.InlineKeyboardButton('Удалить', callback_data=f'delete_&&{str(Exam.file_name)}')
-    share_btn = types.InlineKeyboardButton('Поделиться', callback_data=f'share_&&{str(Exam.file_name)}')
+    delete = types.InlineKeyboardButton('Удалить', callback_data=f'delete_&&{str(exam.file_name)}')
+    share_btn = types.InlineKeyboardButton('Поделиться', callback_data=f'share_&&{str(exam.file_name)}')
 
     markup.add(test, edit, card_list, delete, share_btn)
 
-    bot.send_message(message.chat.id, 'Экзамен ' + Exam.name, reply_markup=markup)
+    bot.send_message(message.chat.id, 'Экзамен ' + exam.name, reply_markup=markup)
 
 
 def edit_exam_name(message):
@@ -530,19 +545,16 @@ def edit_exam_name(message):
 
 
 def set_new_exam_name(message):
-    global Exam
-
-    file_name = f"{message.chat.id}_" + re.sub(r'\W', r'_', str(Exam.name))
+    file_name = f"{message.chat.id}_" + re.sub(r'\W', r'_', str(get_exam(message.chat.id).name))
     DataBase.delete_exam(file_name)
 
-    Exam.name = message.text
+    get_exam(message.chat.id).name = message.text
     save_exam(message)
 
 
 # region switch card
 def cards_list(message):
     set_state(message.chat.id, 'cards_list')
-    global Exam
 
     if message.text == 'Назад':
         exam_menu(message)
@@ -555,7 +567,7 @@ def cards_list(message):
     text = ''
     i = 0
 
-    for elem in Exam.examination_cards:
+    for elem in get_exam(message.chat.id).examination_cards:
         i += 1
         text += f'{i}. {elem.name}\n'
 
@@ -584,15 +596,15 @@ def card_menu(message):
         hi(message)
         return
 
-    global Exam
+    exam = get_exam(message.chat.id)
     global Card
     try:
-        if int(message.text) == len(Exam.examination_cards) + 1:
+        if int(message.text) == len(exam.examination_cards) + 1:
             set_global_edite_mode(True)
             question_name(message)
 
-        elif 0 <= int(message.text) - 1 <= len(Exam.examination_cards):
-            Card = Exam.examination_cards[int(message.text) - 1]
+        elif 0 <= int(message.text) - 1 <= len(exam.examination_cards):
+            Card = exam.examination_cards[int(message.text) - 1]
             card_text = f'<b>{Card.name}</b>\n{Card.short_answer}\n\n{Card.full_answer}'
 
             reply_markup = types.InlineKeyboardMarkup(row_width=1)
@@ -612,7 +624,6 @@ def card_menu(message):
         
         
 def set_value_in_edite_mode(message):
-    global Exam
     global Card
     
     if message.text == 'Назад':
@@ -656,18 +667,19 @@ def start_examination(message):
     global examination_cards
     global progress
     global Card
+    exam = get_exam(message.chat.id)
     progress = 0
     try:
-        if len(Exam.examination_cards) < 4:
+        if len(exam.examination_cards) < 4:
             bot.send_message(message.chat.id, 'Ты добавил(а) как-то мало билетов в экзамен\n'
-                                              f'Минимальное кол-во: 4 (имеется: {len(Exam.examination_cards)})')
+                                              f'Минимальное кол-во: 4 (имеется: {len(exam.examination_cards)})')
             exam_menu(message)
             return
     except:
         hi(message)
         return
 
-    examination_cards = Exam.swap_list()
+    examination_cards = exam.swap_list()
     examination(message)
 
 
@@ -681,7 +693,7 @@ def examination(message):
     if progress < len(examination_cards):
         Card = examination_cards[progress]
 
-        answer_list = Exam.answer_list(Card)
+        answer_list = get_exam(message.chat.id).answer_list(Card)
         reply_markup = types.InlineKeyboardMarkup(row_width=4)
         btns = []
 
