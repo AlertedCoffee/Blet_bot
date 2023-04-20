@@ -4,6 +4,8 @@ import numpy as np
 import sqlite3
 import pickle
 import re
+import time
+from datetime import datetime
 
 
 import LibBlet
@@ -31,10 +33,7 @@ Exams = {}
 
 def get_exam(key: int):
     global Exams
-    try:
-        return Exams[key]
-    except:
-        return None
+    return Exams.get(key)
 
 
 def set_exam(key: int, value: LibBlet.Exam):
@@ -42,9 +41,18 @@ def set_exam(key: int, value: LibBlet.Exam):
     Exams[key] = value
 
 
-Card: LibBlet.Exam.ExaminationCard
+Cards = {}
 
-global_edite_mode = False
+
+def get_card(key: int):
+    global Cards
+    return Cards.get(key)
+
+
+def set_card(key: int, value: LibBlet.Exam.ExaminationCard):
+    global Cards
+    Cards[key] = value
+
 
 hideBoard = types.ReplyKeyboardRemove()
 
@@ -72,7 +80,10 @@ def what_alert(message):
 def alert(message):
     users = DataBase.get_user_list()
     for user in users:
-        bot.send_message(text=message.html_text, chat_id=user[0], parse_mode='HTML')
+        try:
+            bot.send_message(text=message.html_text, chat_id=user[0], parse_mode='HTML')
+        except:
+            pass
 # endregion alert_command
 
 
@@ -98,7 +109,7 @@ def hi(message):
 @bot.message_handler(content_types=['text'])
 def answer(message):
     print(f'{message.from_user.username} {message.chat.id}:    text: {message.text}     '
-          f'state:{get_state(message.chat.id)}')
+          f'state:{get_state(message.chat.id)}      {datetime.now()}')
 
     # try:
     #     if get_state() != 'main' or message.text == 'На главную':
@@ -147,15 +158,16 @@ def answer(message):
 
 @bot.callback_query_handler(func=lambda call: True)
 def buttons(call):
+    message = call.message
 
-    state = get_state(call.message.chat.id)
-    global Card
+    state = get_state(message.chat.id)
+    card = get_card(message.chat.id)
+
     global progress
     global score
 
-    message = call.message
-
-    print(f'{call.message.from_user.username} {call.message.chat.id}:    button: {call.data}   state: {state}')
+    print(f'{call.message.from_user.username} {call.message.chat.id}:    button: {call.data}   state: {state}'
+          f'    {datetime.now()}')
 
     if state is None:
         remove_inline_keyboard(message)
@@ -272,8 +284,9 @@ def buttons(call):
                 return
 
             remove_inline_keyboard(call.message)
-            get_exam(message.chat.id).delete_examination_card(Card)
-            bot.send_message(call.message.chat.id, 'Удалено.')
+            get_exam(message.chat.id).delete_examination_card(card)
+            set_global_edite_mode(True)
+            save_exam(message)
             cards_list(call.message)
 
         case 'do_task':
@@ -288,7 +301,7 @@ def buttons(call):
             if state == 'examination':
                 bot.send_message(message.chat.id, 'Правильно!')
                 bot.send_message(message.chat.id, 'Развернутый ответ билета:\n' +
-                                 Card.full_answer, parse_mode='HTML')
+                                 card.full_answer, parse_mode='HTML')
                 progress += 1
                 score += 1
                 examination(message)
@@ -298,9 +311,17 @@ def buttons(call):
             if state == 'examination':
                 bot.send_message(message.chat.id, 'Неверно(((')
                 bot.send_message(message.chat.id, 'Правильный ответ:\n' +
-                                 f'{Card.short_answer}\n\n{Card.full_answer}', parse_mode='HTML')
+                                 f'{card.short_answer}\n\n{card.full_answer}', parse_mode='HTML')
                 progress += 1
                 examination(message)
+
+        case 'settings':
+            remove_inline_keyboard(message)
+
+            for i in range(10):
+                bot.send_message(message.chat.id, 'До взрыва ' + str(10 - i))
+                time.sleep(1)
+            bot.send_message(message.chat.id, 'оп, нихуя')
 
         case _:
 
@@ -347,6 +368,18 @@ def my_exams_menu(message):
 
 
 # region AddCard
+
+global_edite_mode = False
+
+
+def set_global_edite_mode(param: bool):
+    global global_edite_mode
+    global_edite_mode = param
+
+
+first_question_flag = True
+
+
 def where_add(message):
     set_state(message.chat.id, 'add_exam')
     reply_markup = types.InlineKeyboardMarkup()
@@ -375,16 +408,8 @@ def add_exam_from_file(message):
         where_add(message)
 
 
-def set_global_edite_mode(param: bool):
-    global global_edite_mode
-    global_edite_mode = param
-
-
-first_question_flag = True
-
-
 def set_value(message):
-    global Card
+    card = get_card(message.chat.id)
     global first_question_flag
 
     if message.text == 'Назад':
@@ -421,21 +446,21 @@ def set_value(message):
 
         case 'set_question_name':
 
-            Card = LibBlet.Exam.ExaminationCard()
+            set_card(message.chat.id, LibBlet.Exam.ExaminationCard())
 
-            Card.name = message.text
+            get_card(message.chat.id).name = message.text
 
             short_answer(message)
 
         case 'set_short_answer':
             first_question_flag = False
 
-            Card.short_answer = message.text
+            card.short_answer = message.text
 
             full_answer(message)
 
         case 'set_full_answer':
-            Card.full_answer = message.html_text
+            card.full_answer = message.html_text
 
             write_card(message)
 
@@ -476,7 +501,6 @@ def full_answer(message):
 
 
 def save_exam(message):
-    global Card
     exam = get_exam(message.chat.id)
     file_second_name = re.sub(r'\W', r'_', str(exam.name))
     try:
@@ -496,13 +520,13 @@ def save_exam(message):
 
 
 def all_right(call):
-    global Card
+    card = get_card(call.message.chat.id)
 
     if call.data == 'yes':
         question_name(call.message)
-        get_exam(call.message.chat.id).add_examination_card(Card)
+        get_exam(call.message.chat.id).add_examination_card(card)
     else:
-        get_exam(call.message.chat.id).add_examination_card(Card)
+        get_exam(call.message.chat.id).add_examination_card(card)
         save_exam(call.message)
 
         global first_question_flag
@@ -514,8 +538,8 @@ def all_right(call):
 def write_card(message):
     bot.send_message(message.chat.id, 'ПроверОчка')
     set_state(message.chat.id, 'Result')
-    global Card
-    card_text = f'<b>{Card.name}</b>\n{Card.short_answer}\n\n{Card.full_answer}'
+    card = get_card(message.chat.id)
+    card_text = f'<b>{card.name}</b>\n{card.short_answer}\n\n{card.full_answer}'
 
     bot.send_message(message.chat.id, card_text, parse_mode='HTML')
 # endregion AddCard
@@ -597,15 +621,16 @@ def card_menu(message):
         return
 
     exam = get_exam(message.chat.id)
-    global Card
+
     try:
         if int(message.text) == len(exam.examination_cards) + 1:
             set_global_edite_mode(True)
             question_name(message)
 
         elif 0 <= int(message.text) - 1 <= len(exam.examination_cards):
-            Card = exam.examination_cards[int(message.text) - 1]
-            card_text = f'<b>{Card.name}</b>\n{Card.short_answer}\n\n{Card.full_answer}'
+            set_card(message.chat.id, exam.examination_cards[int(message.text) - 1])
+            card = get_card(message.chat.id)
+            card_text = f'<b>{card.name}</b>\n{card.short_answer}\n\n{card.full_answer}'
 
             reply_markup = types.InlineKeyboardMarkup(row_width=1)
             edit = types.InlineKeyboardButton('Изменить', callback_data='card_edit')
@@ -621,11 +646,11 @@ def card_menu(message):
     except:
         bot.send_message(message.chat.id, 'Бля, ну и что это за хуйня? Напиши нормально')
         bot.register_next_step_handler(message, card_menu)
-        
-        
+
+
 def set_value_in_edite_mode(message):
-    global Card
-    
+    card = get_card(message.chat.id)
+
     if message.text == 'Назад':
         cards_list(message)
         return
@@ -636,13 +661,13 @@ def set_value_in_edite_mode(message):
 
     match get_state(message.chat.id):
         case 'edit_question_name':
-            Card.name = message.text
+            card.name = message.text
 
         case 'edit_short_answer':
-            Card.short_answer = message.text
+            card.short_answer = message.text
 
         case 'edit_full_answer':
-            Card.full_answer = message.html_text
+            card.full_answer = message.html_text
 
         case _:
             return
@@ -666,9 +691,12 @@ score = 0
 def start_examination(message):
     global examination_cards
     global progress
-    global Card
+    global score
+
     exam = get_exam(message.chat.id)
     progress = 0
+    score = 0
+
     try:
         if len(exam.examination_cards) < 4:
             bot.send_message(message.chat.id, 'Ты добавил(а) как-то мало билетов в экзамен\n'
@@ -687,21 +715,21 @@ def examination(message):
     set_state(message.chat.id, 'examination')
     global examination_cards
     global progress
-    global Card
     global score
 
     if progress < len(examination_cards):
-        Card = examination_cards[progress]
+        set_card(message.chat.id, examination_cards[progress])
+        card = get_card(message.chat.id)
 
-        answer_list = get_exam(message.chat.id).answer_list(Card)
+        answer_list = get_exam(message.chat.id).answer_list(card)
         reply_markup = types.InlineKeyboardMarkup(row_width=4)
         btns = []
 
-        text = str(Card.name) + '\n'
+        text = str(card.name) + '\n'
 
         for i in range(4):
             text += f'{i+1}. {answer_list[i].short_answer} \n'
-            call_data = 'ok' if answer_list[i].short_answer == Card.short_answer else 'not_ok'
+            call_data = 'ok' if answer_list[i].short_answer == card.short_answer else 'not_ok'
             btns.append(types.InlineKeyboardButton(i + 1, callback_data=call_data))
 
         reply_markup.add(*btns)
