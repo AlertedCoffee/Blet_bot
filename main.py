@@ -194,16 +194,16 @@ def buttons(call):
             where_add(call.message)
 
         case 'add_exam_from_file':
-            if state != 'add_exam':
-                remove_inline_keyboard(message)
-                return
             remove_inline_keyboard(message)
+            if state != 'add_exam':
+                return
+
             bot.send_message(message.chat.id, 'Пришлите мне файл')
             bot.register_next_step_handler(message, add_exam_from_file)
 
         case 'create_exam':
+            remove_inline_keyboard(message)
             if state != 'add_exam':
-                remove_inline_keyboard(message)
                 return
 
             set_exam_name(message)
@@ -305,8 +305,8 @@ def buttons(call):
                 bot.send_message(message.chat.id, 'Правильно!')
                 bot.send_message(message.chat.id, 'Развернутый ответ билета:\n' +
                                  card.full_answer, parse_mode='HTML')
-                progress += 1
-                score += 1
+                progress[message.chat.id] += 1
+                score[message.chat.id] += 1
                 examination(message)
 
         case 'not_ok':
@@ -315,7 +315,7 @@ def buttons(call):
                 bot.send_message(message.chat.id, 'Неверно(((')
                 bot.send_message(message.chat.id, 'Правильный ответ:\n' +
                                  f'{card.short_answer}\n\n{card.full_answer}', parse_mode='HTML')
-                progress += 1
+                progress[message.chat.id] += 1
                 examination(message)
 
         case 'settings':
@@ -427,6 +427,7 @@ def add_exam_from_file(message):
 
 
 def set_value(message):
+
     card = get_card(message.chat.id)
 
     if message.text == 'Назад':
@@ -457,11 +458,20 @@ def set_value(message):
 
     match get_state(message.chat.id):
         case 'set_exam_name':
+            if message.text is None:
+                bot.send_message(message.chat.id, 'Я принимаю только текст')
+                set_exam_name(message)
+                return
+
             set_exam(message.chat.id, LibBlet.Exam(message.text))
 
             question_name(message)
 
         case 'set_question_name':
+            if message.text is None:
+                bot.send_message(message.chat.id, 'Я принимаю только текст')
+                question_name(message)
+                return
 
             set_card(message.chat.id, LibBlet.Exam.ExaminationCard())
 
@@ -470,6 +480,11 @@ def set_value(message):
             short_answer(message)
 
         case 'set_short_answer':
+            if message.text is None:
+                bot.send_message(message.chat.id, 'Я принимаю только текст')
+                short_answer(message)
+                return
+
             set_first_question_flag(message.chat.id, False)
 
             card.short_answer = message.text
@@ -477,6 +492,11 @@ def set_value(message):
             full_answer(message)
 
         case 'set_full_answer':
+            if message.text is None:
+                bot.send_message(message.chat.id, 'Я принимаю только текст')
+                full_answer(message)
+                return
+
             card.full_answer = message.html_text
 
             write_card(message)
@@ -585,6 +605,19 @@ def edit_exam_name(message):
 
 
 def set_new_exam_name(message):
+    if message.text is None:
+        bot.send_message(message.chat.id, 'Я принимаю только текст')
+        edit_exam_name(message)
+        return
+
+    if message.text == 'Назад':
+        exam_menu(message)
+        return
+
+    if message.text == 'На главную':
+        hi(message)
+        return
+
     file_name = f"{message.chat.id}_" + re.sub(r'\W', r'_', str(get_exam(message.chat.id).name))
     DataBase.delete_exam(file_name)
 
@@ -615,7 +648,7 @@ def cards_list(message):
 
     try:
         bot.send_message(message.chat.id, text)
-        bot.send_message(message.chat.id, 'Выберите пункт:')
+        bot.send_message(message.chat.id, 'Напишите пункт пункт:')
 
         bot.register_next_step_handler(message, card_menu)
     except telebot.apihelper.ApiTelegramException:
@@ -665,6 +698,11 @@ def card_menu(message):
 
 
 def set_value_in_edite_mode(message):
+    if message.text is None:
+        bot.send_message(message.chat.id, 'Я принимаю только текст')
+        cards_list(message)
+        return
+
     card = get_card(message.chat.id)
 
     if message.text == 'Назад':
@@ -698,9 +736,9 @@ def set_value_in_edite_mode(message):
 # endregion switch exam
 
 
-examination_cards = []
-progress = 0
-score = 0
+examination_cards = {}
+progress = {}
+score = {}
 
 
 # region test
@@ -710,8 +748,8 @@ def start_examination(message):
     global score
 
     exam = get_exam(message.chat.id)
-    progress = 0
-    score = 0
+    progress[message.chat.id] = 0
+    score[message.chat.id] = 0
 
     try:
         if len(exam.examination_cards) < 4:
@@ -723,7 +761,7 @@ def start_examination(message):
         hi(message)
         return
 
-    examination_cards = exam.swap_list()
+    examination_cards[message.chat.id] = exam.swap_list()
     examination(message)
 
 
@@ -733,8 +771,8 @@ def examination(message):
     global progress
     global score
 
-    if progress < len(examination_cards):
-        set_card(message.chat.id, examination_cards[progress])
+    if progress[message.chat.id] < len(examination_cards[message.chat.id]):
+        set_card(message.chat.id, examination_cards[message.chat.id][progress[message.chat.id]])
         card = get_card(message.chat.id)
 
         answer_list = get_exam(message.chat.id).answer_list(card)
@@ -752,9 +790,9 @@ def examination(message):
 
         bot.send_message(message.chat.id, text, reply_markup=reply_markup)
     else:
-        bot.send_message(message.chat.id, f'Билеты кончились. Твой результат: {score}/{len(examination_cards)}\n'
+        bot.send_message(message.chat.id, f'Билеты кончились. Твой результат: {score[message.chat.id]}/'
+                                          f'{len(examination_cards[message.chat.id])}\n'
                                           f'Ты хорошо поработал(а)!')
-        score = 0
 
 # endregion test
 
