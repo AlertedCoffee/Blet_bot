@@ -94,7 +94,10 @@ def hi(message):
         DataBase.add_user(message.from_user.id, message.from_user.username)
     except sqlite3.IntegrityError:
         pass
-    # Remove all KeyboardButtons
+
+    set_global_edite_mode(message.chat.id, False)
+    set_first_question_flag(message.chat.id, True)
+
     bot.send_message(text='Мы на главной', chat_id=message.chat.id, reply_markup=re_markup)
 
     markup = types.InlineKeyboardMarkup(row_width=1)
@@ -285,7 +288,7 @@ def buttons(call):
 
             remove_inline_keyboard(call.message)
             get_exam(message.chat.id).delete_examination_card(card)
-            set_global_edite_mode(True)
+            set_global_edite_mode(message.chat.id, True)
             save_exam(message)
             cards_list(call.message)
 
@@ -369,15 +372,30 @@ def my_exams_menu(message):
 
 # region AddCard
 
-global_edite_mode = False
+global_edite_mode = {}
 
 
-def set_global_edite_mode(param: bool):
+def set_global_edite_mode(key: int, value: bool):
     global global_edite_mode
-    global_edite_mode = param
+    global_edite_mode[key] = value
 
 
-first_question_flag = True
+def get_global_edite_mode(key: int):
+    global global_edite_mode
+    return global_edite_mode.get(key)
+
+
+first_question_flag = {}
+
+
+def set_first_question_flag(key: int, value: bool):
+    global first_question_flag
+    first_question_flag[key] = value
+
+
+def get_first_question_flag(key: int):
+    global first_question_flag
+    return first_question_flag.get(key)
 
 
 def where_add(message):
@@ -410,7 +428,6 @@ def add_exam_from_file(message):
 
 def set_value(message):
     card = get_card(message.chat.id)
-    global first_question_flag
 
     if message.text == 'Назад':
 
@@ -419,7 +436,7 @@ def set_value(message):
                 where_add(message)
 
             case 'set_question_name':
-                if first_question_flag:
+                if get_first_question_flag(message.chat.id):
                     set_exam_name(message)
                 else:
                     question_name(message)
@@ -453,7 +470,7 @@ def set_value(message):
             short_answer(message)
 
         case 'set_short_answer':
-            first_question_flag = False
+            set_first_question_flag(message.chat.id, False)
 
             card.short_answer = message.text
 
@@ -509,10 +526,10 @@ def save_exam(message):
                     protocol=pickle.HIGHEST_PROTOCOL)
         test = pickle.dumps(exam)
         out = pickle.loads(test)
-        if not global_edite_mode:
+        if not get_global_edite_mode(message.chat.id):
             DataBase.add_exam(message.chat.id, f'{message.chat.id}_{file_second_name}')
         else:
-            set_global_edite_mode(False)
+            set_global_edite_mode(message.chat.id, False)
         bot.send_message(text='Экзамен сохранен.', chat_id=message.chat.id)
     except Exception as inst:
         print(inst)
@@ -529,8 +546,7 @@ def all_right(call):
         get_exam(call.message.chat.id).add_examination_card(card)
         save_exam(call.message)
 
-        global first_question_flag
-        first_question_flag = True
+        set_first_question_flag(call.message.chat.id, True)
 
         set_state(call.message.chat.id, 'ended_add')
 
@@ -624,7 +640,7 @@ def card_menu(message):
 
     try:
         if int(message.text) == len(exam.examination_cards) + 1:
-            set_global_edite_mode(True)
+            set_global_edite_mode(message.chat.id, True)
             question_name(message)
 
         elif 0 <= int(message.text) - 1 <= len(exam.examination_cards):
@@ -673,7 +689,7 @@ def set_value_in_edite_mode(message):
             return
     write_card(message)
 
-    set_global_edite_mode(True)
+    set_global_edite_mode(message.chat.id, True)
     save_exam(message)
 
     cards_list(message)
