@@ -109,10 +109,26 @@ def alert_to(message):
 # endregion alert_commands
 
 
+def bot_was_restarted(message):
+    if get_state(message.chat.id) is None:
+        users_list = np.array(DataBase.get_user_list())
+        try:
+            # Эта шляпа для того, чтобы вылетало исключение, если в базе нет пользователя.
+            index = np.where(users_list == str(message.chat.id))[0][0]
+            bot.send_message(message.chat.id, 'Бот был перезагружен)')
+        except:
+            bot.send_message(message.chat.id, 'Привет)')
+        hi(message)
+        return True
+    else:
+        return False
+
+
 @bot.message_handler(commands=['start'])
 def hi(message):
     set_state(message.chat.id, 'main')
     try:
+        DataBase.delete_user(message.from_user.id)
         DataBase.add_user(message.from_user.id, message.from_user.username)
     except sqlite3.IntegrityError:
         pass
@@ -136,20 +152,8 @@ def answer(message):
     print(f'{message.from_user.username} {message.chat.id}:    text: {message.text}     '
           f'state:{get_state(message.chat.id)}      {datetime.now()}')
 
-    # try:
-    #     if get_state() != 'main' or message.text == 'На главную':
-    #         bot.delete_message(message.chat.id, message.message_id - 1)
-    # except:
-    #     pass
-
-    if get_state(message.chat.id) is None:
-        users_list = np.array(DataBase.get_user_list())
-        try:
-            index = np.where(users_list == str(message.chat.id))[0][0]
-            bot.send_message(message.chat.id, 'Бот был перезагружен)')
-        except:
-            bot.send_message(message.chat.id, 'Привет)')
-        hi(message)
+    # Проверка на рестарт бота.
+    if bot_was_restarted(message):
         return
 
     if message.text == 'На главную':
@@ -194,15 +198,7 @@ def buttons(call):
     print(f'{call.message.from_user.username} {call.message.chat.id}:    button: {call.data}   state: {state}'
           f'    {datetime.now()}')
 
-    if state is None:
-        remove_inline_keyboard(message)
-        users_list = np.array(DataBase.get_user_list())
-        try:
-            index = np.where(users_list == str(message.chat.id))[0][0]
-            bot.send_message(message.chat.id, 'Бот был перезагружен)')
-        except:
-            bot.send_message(message.chat.id, 'Привет)')
-        hi(message)
+    if bot_was_restarted(message):
         return
 
     match call.data:
@@ -231,36 +227,32 @@ def buttons(call):
             set_exam_name(message)
 
         case 'yes' | 'no':
+            remove_inline_keyboard(message)
             if state != 'Result':
-                remove_inline_keyboard(message)
                 return
 
-            remove_inline_keyboard(call.message)
             all_right(call)
 
         case 'edit_exam_name':
+            remove_inline_keyboard(message)
             if state != 'exam':
-                remove_inline_keyboard(message)
                 return
 
-            remove_inline_keyboard(call.message)
-            edit_exam_name(call.message)
+            edit_exam_name(message)
 
         case 'cards_list':
+            remove_inline_keyboard(message)
             if state != 'exam':
-                remove_inline_keyboard(message)
                 return
 
-            remove_inline_keyboard(call.message)
-            cards_list(call.message)
+            cards_list(message)
 
         case 'card_edit':
+            remove_inline_keyboard(message)
             if state != 'card_menu':
-                remove_inline_keyboard(message)
                 return
 
             set_state(message.chat.id, 'edit_card')
-            remove_inline_keyboard(message)
 
             reply_markup = types.InlineKeyboardMarkup(row_width=1)
             name = types.InlineKeyboardButton('Вопрос', callback_data='edit_card_name')
@@ -271,54 +263,47 @@ def buttons(call):
             bot.send_message(call.message.chat.id, 'А что изменить?', reply_markup=reply_markup)
 
         case 'edit_card_name':
-            if state != 'edit_card':
-                remove_inline_keyboard(message)
-                return
-
             remove_inline_keyboard(message)
+            if state != 'edit_card':
+                return
 
             bot.send_message(text='Введите вопрос', chat_id=message.chat.id)
             set_state(message.chat.id, 'edit_question_name')
             bot.register_next_step_handler(message, set_value_in_edite_mode)
 
         case 'edit_card_short_answer':
-            if state != 'edit_card':
-                remove_inline_keyboard(message)
-                return
-
             remove_inline_keyboard(message)
+            if state != 'edit_card':
+                return
 
             bot.send_message(text='Введите тезисный (краткий) ответ', chat_id=message.chat.id)
             set_state(message.chat.id, 'edit_short_answer')
             bot.register_next_step_handler(message, set_value_in_edite_mode)
 
         case 'edit_card_full_answer':
-            if state != 'edit_card':
-                remove_inline_keyboard(message)
-                return
-
             remove_inline_keyboard(message)
+            if state != 'edit_card':
+                return
 
             bot.send_message(text='Введите развернутый ответ', chat_id=message.chat.id)
             set_state(message.chat.id, 'edit_full_answer')
             bot.register_next_step_handler(message, set_value_in_edite_mode)
 
         case 'card_delete':
+            remove_inline_keyboard(message)
             if state != 'card_menu':
-                remove_inline_keyboard(message)
                 return
 
-            remove_inline_keyboard(call.message)
             get_exam(message.chat.id).delete_examination_card(card)
             set_global_edite_mode(message.chat.id, True)
             save_exam(message)
             cards_list(call.message)
 
         case 'do_task':
+            remove_inline_keyboard(message)
             if state != 'exam':
                 return
 
-            remove_inline_keyboard(message)
             start_examination(message)
 
         case 'ok':
@@ -351,9 +336,9 @@ def buttons(call):
         case _:
 
             if state == 'my_exams':
-                remove_inline_keyboard(call.message)
+                remove_inline_keyboard(message)
                 set_exam(message.chat.id, LibBlet.Exam.load_exam(call.data))
-                exam_menu(call.message)
+                exam_menu(message)
             elif state == 'exam':
                 data = call.data.split('&&')
                 if data[0] == 'delete_':
@@ -366,7 +351,7 @@ def buttons(call):
                     with open(f'Exams/{data[1]}.dat', 'rb') as f:
                         bot.send_document(call.message.chat.id, types.InputFile(f))
             else:
-                # bot.send_message(message.chat.id, 'Пока не доступно. (либо бот был перезагружен)')
+                bot.send_message(message.chat.id, 'Пока не доступно.')
                 return
 
 
@@ -381,6 +366,7 @@ def my_exams_menu(message):
     i = 0
     for elem in data:
         i += 1
+        # Здесь происходят ужасы парсинга записей в базе и преобразования их в читаемый вид для пользователя
         param = r'[\'\]\'\[]'
         text += f'{i}. {re.sub(param, "", re.sub(f"{message.chat.id}", "", re.sub(r"[_]", " ", str(elem))))}\n'
         buttons.append(types.InlineKeyboardButton(i, callback_data=re.sub(param, "", str(elem))))
@@ -673,8 +659,6 @@ def cards_list(message):
         bot.send_message(message.chat.id, 'Напишите пункт пункт:')
 
         bot.register_next_step_handler(message, card_menu)
-    except telebot.apihelper.ApiTelegramException:
-        bot.send_message(message.chat.id, 'Тут как-то пусто')
     except Exception as inst:
         print(inst)
         bot.send_message(text=f'Бля, что-то пошло не так\n\n{inst}', chat_id=message.chat.id)
