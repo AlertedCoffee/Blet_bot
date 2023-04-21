@@ -67,7 +67,7 @@ def remove_inline_keyboard(message):
     bot.edit_message_text(text=message.html_text, chat_id=message.chat.id, message_id=message.message_id, parse_mode='HTML')
 
 
-# region alert_command
+# region alert_commands
 @bot.message_handler(commands=['alert'])
 def what_alert(message):
     if message.from_user.id == 542687360:
@@ -78,13 +78,35 @@ def what_alert(message):
 
 
 def alert(message):
+    if message.text == 'На главную' or message.text == 'Назад':
+        hi(message)
+
     users = DataBase.get_user_list()
     for user in users:
         try:
             bot.send_message(text=message.html_text, chat_id=user[0], parse_mode='HTML')
         except:
             pass
-# endregion alert_command
+
+
+@bot.message_handler(commands=['alert_to'])
+def what_alert_to(message):
+    if message.from_user.id == 542687360:
+        bot.send_message(message.chat.id, 'Кому: что говорим?')
+        bot.register_next_step_handler(message, alert_to)
+    else:
+        bot.send_message(message.chat.id, 'У тебя нет доступа к команде)')
+
+
+def alert_to(message):
+    if message.text == 'На главную' or message.text == 'Назад':
+        hi(message)
+
+    try:
+        bot.send_message(text=message.text.split(':')[1:], chat_id=message.text.split(':')[0], parse_mode='HTML')
+    except:
+        pass
+# endregion alert_commands
 
 
 @bot.message_handler(commands=['start'])
