@@ -6,6 +6,7 @@ import pickle
 import re
 import time
 from datetime import datetime
+import os
 
 
 import LibBlet
@@ -351,7 +352,7 @@ def buttons(call):
                     with open(f'Exams/{data[1]}.dat', 'rb') as f:
                         bot.send_document(call.message.chat.id, types.InputFile(f))
             else:
-                bot.send_message(message.chat.id, 'Пока не доступно.')
+                bot.send_message(message.chat.id, 'Не доступно.')
                 return
 
 
@@ -424,9 +425,8 @@ def add_exam_from_file(message):
     if message.text == 'На главную':
         hi(message)
         return
-
-    file_info = bot.get_file(message.document.file_id)
     try:
+        file_info = bot.get_file(message.document.file_id)
         set_exam(message.chat.id, pickle.loads(bot.download_file(file_info.file_path)))
         save_exam(message)
     except:
@@ -550,7 +550,7 @@ def save_exam(message):
     file_second_name = re.sub(r'\W', r'_', str(exam.name))
     try:
         exam.file_name = f'{message.chat.id}_{file_second_name}'
-        pickle.dump(exam, open(f'Exams\\{message.chat.id}_{file_second_name}.dat', 'wb'),
+        pickle.dump(exam, open(f'./Exams/{message.chat.id}_{file_second_name}.dat', 'wb'),
                     protocol=pickle.HIGHEST_PROTOCOL)
         test = pickle.dumps(exam)
         out = pickle.loads(test)
@@ -559,9 +559,11 @@ def save_exam(message):
         else:
             set_global_edite_mode(message.chat.id, False)
         bot.send_message(text='Экзамен сохранен.', chat_id=message.chat.id)
+        return True
     except Exception as inst:
         print(inst)
         bot.send_message(text=f'Бля, что-то пошло не так\n\n{inst}', chat_id=message.chat.id)
+        return False
 
 
 def all_right(call):
@@ -627,10 +629,10 @@ def set_new_exam_name(message):
         return
 
     file_name = f"{message.chat.id}_" + re.sub(r'\W', r'_', str(get_exam(message.chat.id).name))
-    DataBase.delete_exam(file_name)
 
     get_exam(message.chat.id).name = message.text
-    save_exam(message)
+    if save_exam(message):
+        DataBase.delete_exam(file_name)
 
 
 # region switch card

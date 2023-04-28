@@ -66,7 +66,7 @@ def delete_exam(exam_id: str):
     connection.commit()
     connection.close()
     try:
-        os.remove(f'{os.getcwd()}\\Exams\\{exam_id}.dat')
+        os.remove(f'./Exams/{exam_id}.dat')
     except:
         print(f'delete error 404. {exam_id}')
 

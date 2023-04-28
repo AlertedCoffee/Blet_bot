@@ -1,5 +1,6 @@
 import pickle
 import random
+import os
 
 
 class Exam:
@@ -55,7 +56,7 @@ class Exam:
 
     @staticmethod
     def load_exam(name):
-        return pickle.load(open(f'Exams\\{name}.dat', 'rb'))
+        return pickle.load(open(f'./Exams/{name}.dat', 'rb'))
 
     class ExaminationCard:
         default_name = 'Unnamed'
