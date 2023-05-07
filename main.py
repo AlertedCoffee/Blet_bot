@@ -338,8 +338,14 @@ def buttons(call):
 
             if state == 'my_exams':
                 remove_inline_keyboard(message)
-                set_exam(message.chat.id, LibBlet.Exam.load_exam(call.data))
-                exam_menu(message)
+                try:
+                    set_exam(message.chat.id, LibBlet.Exam.load_exam(call.data))
+                    exam_menu(message)
+                except Exception as inst:
+                    print(inst)
+                    bot.send_message(text=f'Бля, что-то пошло не так\n\nПоходу файл потерялся или был поврежден. '
+                                          f'Обратитесь в поддержку.', chat_id=message.chat.id)
+
             elif state == 'exam':
                 data = call.data.split('&&')
                 if data[0] == 'delete_':
@@ -349,7 +355,7 @@ def buttons(call):
                     my_exams_menu(call.message)
 
                 elif data[0] == 'share_':
-                    with open(f'Exams/{data[1]}.dat', 'rb') as f:
+                    with open(f'Exams/{data[1]}.blet', 'rb') as f:
                         bot.send_document(call.message.chat.id, types.InputFile(f))
             else:
                 bot.send_message(message.chat.id, 'Не доступно.')
@@ -550,7 +556,7 @@ def save_exam(message):
     file_second_name = re.sub(r'\W', r'_', str(exam.name))
     try:
         exam.file_name = f'{message.chat.id}_{file_second_name}'
-        pickle.dump(exam, open(f'./Exams/{message.chat.id}_{file_second_name}.dat', 'wb'),
+        pickle.dump(exam, open(f'./Exams/{message.chat.id}_{file_second_name}.blet', 'wb'),
                     protocol=pickle.HIGHEST_PROTOCOL)
         test = pickle.dumps(exam)
         out = pickle.loads(test)
@@ -658,7 +664,7 @@ def cards_list(message):
 
     try:
         bot.send_message(message.chat.id, text)
-        bot.send_message(message.chat.id, 'Напишите пункт пункт:')
+        bot.send_message(message.chat.id, 'Напишите пункт:')
 
         bot.register_next_step_handler(message, card_menu)
     except Exception as inst:
