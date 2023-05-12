@@ -104,7 +104,7 @@ def alert_to(message):
         hi(message)
 
     try:
-        bot.send_message(text=message.text.split(':')[1:], chat_id=message.text.split(':')[0], parse_mode='HTML')
+        bot.send_message(text=message.html_text.split(':')[1:], chat_id=message.text.split(':')[0], parse_mode='HTML')
     except:
         pass
 # endregion alert_commands
@@ -150,7 +150,7 @@ def hi(message):
 
 @bot.message_handler(content_types=['text'])
 def answer(message):
-    print(f'{message.from_user.username} {message.chat.id}:    text: {message.text}     '
+    print(f'{DataBase.get_user_name(message.chat.id)[0][0]} {message.chat.id}:    text: {message.text}     '
           f'state:{get_state(message.chat.id)}      {datetime.now()}')
 
     # Проверка на рестарт бота.
@@ -196,8 +196,8 @@ def buttons(call):
     global progress
     global score
 
-    print(f'{call.message.from_user.username} {call.message.chat.id}:    button: {call.data}   state: {state}'
-          f'    {datetime.now()}')
+    print(f'{DataBase.get_user_name(message.chat.id)[0][0]} {call.message.chat.id}:    button: {call.data}   '
+          f'state: {state}      {datetime.now()}')
 
     if bot_was_restarted(message):
         return
@@ -327,12 +327,7 @@ def buttons(call):
                 examination(message)
 
         case 'settings':
-            remove_inline_keyboard(message)
-
-            for i in range(10):
-                bot.send_message(message.chat.id, 'До взрыва ' + str(10 - i))
-                time.sleep(1)
-            bot.send_message(message.chat.id, 'оп, нихуя')
+            bot.send_message(message.chat.id, 'Пока нечего настраивать(')
 
         case _:
 
@@ -441,6 +436,8 @@ def add_exam_from_file(message):
 
 
 def set_value(message):
+    print(f'{DataBase.get_user_name(message.chat.id)[0][0]} {message.chat.id}:    text: {message.text}     '
+          f'state:{get_state(message.chat.id)}      {datetime.now()}')
 
     card = get_card(message.chat.id)
 

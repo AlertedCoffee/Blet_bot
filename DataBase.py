@@ -58,6 +58,20 @@ def get_user_list():
     return result
 
 
+def get_user_name(user_id: int):
+    connection = sql.connect('userbase.db')
+    cursor = connection.cursor()
+
+    cursor.execute(f"SELECT user_name FROM users where user_id = {user_id};")
+    result = cursor.fetchall()
+    connection.close()
+    if result:
+        return result
+    else:
+        result = [[None], []]
+        return result
+
+
 def delete_exam(exam_id: str):
     connection = sql.connect('userbase.db')
     cursor = connection.cursor()
